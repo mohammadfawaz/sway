@@ -117,6 +117,7 @@ impl RealizedAbstractInstructionSet {
             })
             .collect::<Vec<_>>();
 
+        println!("op_register_mapping: {:#?}", op_register_mapping);
         // get registers from the pool.
         let mut pool = RegisterPool::init();
         let mut buf = vec![];
@@ -645,6 +646,8 @@ pub(crate) fn compile_ast_to_asm(
                     });
                     for (body, name) in const_decls {
                         let return_register = register_sequencer.next();
+                        println!("body: {:#?}", body);
+                        println!("name: {:#?}", name);
                         let mut buf = check!(
                             convert_expression_to_asm(
                                 body,
@@ -656,6 +659,7 @@ pub(crate) fn compile_ast_to_asm(
                             warnings,
                             errors
                         );
+                        println!("buf 2: {:#?}", buf);
                         asm_buf.append(&mut buf);
                         namespace.insert_variable(name.clone(), return_register);
                     }
@@ -665,6 +669,7 @@ pub(crate) fn compile_ast_to_asm(
             );
             // start generating from the main function
             let return_register = register_sequencer.next();
+            println!("converting : {:#?}", main_function.body);
             let mut body = check!(
                 convert_code_block_to_asm(
                     &main_function.body,
@@ -677,6 +682,8 @@ pub(crate) fn compile_ast_to_asm(
                 warnings,
                 errors
             );
+            
+            println!("body 1: {:#?}\n", body);
             asm_buf.append(&mut body);
             asm_buf.append(&mut check!(
                 ret_or_retd_value(
@@ -736,6 +743,7 @@ pub(crate) fn compile_ast_to_asm(
                             warnings,
                             errors
                         );
+                        println!("buf 2: {:#?}", buf);
                         asm_buf.append(&mut buf);
                         namespace.insert_variable(name.clone(), return_register);
                     }
@@ -755,6 +763,7 @@ pub(crate) fn compile_ast_to_asm(
                 warnings,
                 errors
             );
+                        println!("body 2: {:#?}", body);
             asm_buf.append(&mut body);
 
             (
@@ -804,6 +813,7 @@ pub(crate) fn compile_ast_to_asm(
                             errors
                         );
                         asm_buf.append(&mut buf);
+                        println!("buf 3: {:#?}", buf);
                         namespace.insert_variable(name.clone(), return_register);
                     }
                     ok((), warnings, errors)
@@ -1025,6 +1035,7 @@ impl RegisterAllocatedAsmSet {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum NodeAsmResult {
     JustAsm(Vec<Op>),
     ReturnStatement { asm: Vec<Op> },
@@ -1068,6 +1079,7 @@ fn convert_node_to_asm(
             } else {
                 register_sequencer.next()
             };
+            println!("exp in ImplicitReturnExpression: {:#?}", exp);
             let ops = check!(
                 convert_expression_to_asm(exp, namespace, &return_register, register_sequencer),
                 return err(warnings, errors),
