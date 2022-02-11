@@ -207,13 +207,8 @@ impl RealizedAbstractInstructionSet {
                 println!("idx2: {:#?}", idx2);
                 println!("op: {:#?}\n", op.opcode);
                 println!("move is needed: {:#?}\n", move_is_needed);
-
+                println!("inserting {:#?} -> {:#?}\n", r1.clone(), r2.clone());
                 old_to_new_reg.insert(r1.clone(), r2.clone());
-                // what do we do if the move is not needed?
-                //                for i in ix..op_register_mapping.len() {
-                //                    println!("are we here?\n");
-                //                    op_register_mapping[i].0.opcode.update_register(r1.clone(), r2.clone());
-                //                }
                 inst_index.insert(old_index, new_index);
                 old_index += 1; 
             } else if let VirtualOp::DataSectionOffsetPlaceholder = &op.opcode {
@@ -231,6 +226,7 @@ impl RealizedAbstractInstructionSet {
                 new_index += 1; 
             }
         }
+        println!("old_to_new_reg: {:#?}", old_to_new_reg);
 
         // Normalize
         let mut full_map: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
