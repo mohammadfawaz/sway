@@ -142,10 +142,9 @@ impl RealizedAbstractInstructionSet {
         }
 
         // Let's look at the first virtual register
-        let first_virtual_register = VirtualRegister::Virtual("1".to_string());
         for reg in &all_virtual_registers {
             let mut op_indices = vec![];
-            for (ix, (op, regs)) in op_register_mapping.iter().enumerate() {
+            for (ix, (_, regs)) in op_register_mapping.iter().enumerate() {
                 if regs.contains(&reg) {
                     op_indices.push(ix);
                 }
@@ -194,6 +193,8 @@ impl RealizedAbstractInstructionSet {
 
         let mut buf1 = vec![];
         let mut old_to_new_reg: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
+        let mut inst_index: HashMap<usize, usize> = HashMap::new();
+        let mut current_index:usize = 0;
         for (ix, (op, _)) in op_register_mapping.iter().enumerate() {
             if let VirtualOp::MOVE(r1, r2) = &op.opcode {
                 let idx1 = virtual_register_to_graph_indices.get(&r1).unwrap();
@@ -211,7 +212,11 @@ impl RealizedAbstractInstructionSet {
                 //                    op_register_mapping[i].0.opcode.update_register(r1.clone(), r2.clone());
                 //                }
             } else {
+                println!("ix: {}", ix);
+                println!("current_index: {}", current_index);;
+                inst_index.insert(ix, current_index);
                 buf1.push(op);
+                current_index = current_index + 1; 
             }
         }
 
@@ -231,7 +236,7 @@ impl RealizedAbstractInstructionSet {
         let buf1_new = buf1
             .into_iter()
             .map(|op| RealizedOp {
-                opcode: op.opcode.update_register(&full_map),
+                opcode: op.opcode.update_register(&full_map, &inst_index),
                 comment: op.comment.clone(),
                 owning_span: op.owning_span.clone(),
             })

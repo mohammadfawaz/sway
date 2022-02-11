@@ -226,6 +226,7 @@ impl VirtualOp {
     pub(crate) fn update_register(
         &self,
         full_map: &HashMap<VirtualRegister, VirtualRegister>,
+        inst_index: &HashMap<usize, usize>,
     ) -> Self {
         use VirtualOp::*;
         match self {
@@ -244,7 +245,8 @@ impl VirtualOp {
             JNEI(r1, r2, i) => Self::JNEI(
                 update_reg(&full_map, &r1),
                 update_reg(&full_map, &r2),
-                i.clone()
+                update_virtual_immediate_12(&inst_index, i),
+//                i.clone()
             ),
             EQ(r1, r2, r3) => Self::EQ(
                 update_reg(&full_map, &r1),
@@ -695,6 +697,24 @@ fn update_reg(
         reg.clone()
     }
 }
+
+fn update_virtual_immediate_12(
+    inst_index: &HashMap<usize, usize>,
+    idx: &VirtualImmediate12,
+) -> VirtualImmediate12 {
+    println!("HERE: ");
+    println!("inst_index: {:#?}", inst_index);
+    println!("old index: {}", idx.value);
+    if let Some(i) = inst_index.get(&(idx.value as usize)) {
+        println!("new index: {}", i);
+       VirtualImmediate12 {value : i.clone() as u16 }
+    } else {
+        // Really an internal compiler error
+        idx.clone()
+    }
+}
+
+
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 /// A label for a spot in the bytecode, to be later compiled to an offset.
