@@ -254,6 +254,12 @@ impl VirtualOp {
                 ),
             RVRT(reg1) => Self::RVRT(update_reg(&full_map, &reg1)),
             JI(i) => Self::JI(update_virtual_immediate_24(&inst_index, i)),
+            CFEI(i) => Self::CFEI(update_virtual_immediate_24(&inst_index, i)),
+            MCPI(reg1, reg2, i) => Self::MCPI(
+                update_reg(&full_map, reg1),
+                update_reg(&full_map, reg2),
+                update_virtual_immediate_12(&inst_index, i),
+            ),
             _ => self.clone(),
         }
         /*ADDI(r1, r2, _i) => vec![r1, r2],
