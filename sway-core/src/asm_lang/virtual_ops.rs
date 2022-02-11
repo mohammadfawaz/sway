@@ -223,6 +223,140 @@ impl VirtualOp {
         .collect()
     }
 
+    pub(crate) fn update_register(
+        &self,
+        full_map: &HashMap<VirtualRegister, VirtualRegister>,
+    ) -> Self {
+        use VirtualOp::*;
+        match self {
+            ADD(r1, r2, r3) => {
+                let new_add = Self::ADD(
+                    if let Some(r) = full_map.get(&r1) {
+                        println!("Here 1: {:#?}", r1.clone());
+                        println!("Here 1: {:#?}", r.clone());
+                        r.clone()
+                    } else {
+                        r1.clone()
+                    },
+                    if let Some(r) = full_map.get(&r2) {
+                        println!("Here 2: {:#?}", r2.clone());
+                        println!("Here 2: {:#?}", r.clone());
+                        r.clone()
+                    } else {
+                        r2.clone()
+                    },
+                    if let Some(r) = full_map.get(&r3) {
+                        println!("Here 3: {:#?}", r3.clone());
+                        println!("Here 3: {:#?}", r.clone());
+                        r.clone()
+                    } else {
+                        r3.clone()
+                    },
+                );
+                println!("new add: {:#?}", new_add);
+                new_add
+            }
+            LWDataId(r1, i) => Self::LWDataId(
+                if let Some(r) = full_map.get(&r1) {
+                    r.clone()
+                } else {
+                    r1.clone()
+                },
+                i.clone(),
+            ),
+            RET(r1) => Self::RET(
+                if let Some(r) = full_map.get(&r1) {
+                    r.clone()
+                } else {
+                    r1.clone()
+                }
+            ),
+            _ => self.clone(),
+        }
+        /*ADDI(r1, r2, _i) => vec![r1, r2],
+        AND(r1, r2, r3) => vec![r1, r2, r3],
+        ANDI(r1, r2, _i) => vec![r1, r2],
+        DIV(r1, r2, r3) => vec![r1, r2, r3],
+        DIVI(r1, r2, _i) => vec![r1, r2],
+        EQ(r1, r2, r3) => vec![r1, r2, r3],
+        EXP(r1, r2, r3) => vec![r1, r2, r3],
+        EXPI(r1, r2, _i) => vec![r1, r2],
+        GT(r1, r2, r3) => vec![r1, r2, r3],
+        LT(r1, r2, r3) => vec![r1, r2, r3],
+        MLOG(r1, r2, r3) => vec![r1, r2, r3],
+        MROO(r1, r2, r3) => vec![r1, r2, r3],
+        MOD(r1, r2, r3) => vec![r1, r2, r3],
+        MODI(r1, r2, _i) => vec![r1, r2],
+        MOVE(r1, r2) => vec![r1, r2],
+        MUL(r1, r2, r3) => vec![r1, r2, r3],
+        MULI(r1, r2, _i) => vec![r1, r2],
+        NOT(r1, r2) => vec![r1, r2],
+        OR(r1, r2, r3) => vec![r1, r2, r3],
+        ORI(r1, r2, _i) => vec![r1, r2],
+        SLL(r1, r2, r3) => vec![r1, r2, r3],
+        SLLI(r1, r2, _i) => vec![r1, r2],
+        SRL(r1, r2, r3) => vec![r1, r2, r3],
+        SRLI(r1, r2, _i) => vec![r1, r2],
+        SUB(r1, r2, r3) => vec![r1, r2, r3],
+        SUBI(r1, r2, _i) => vec![r1, r2],
+        XOR(r1, r2, r3) => vec![r1, r2, r3],
+        XORI(r1, r2, _i) => vec![r1, r2],
+        CIMV(r1, r2, r3) => vec![r1, r2, r3],
+        CTMV(r1, r2) => vec![r1, r2],
+        JI(_im) => vec![],
+        JNEI(r1, r2, _i) => vec![r1, r2],
+        RET(r1) => vec![r1],
+        RETD(r1, r2) => vec![r1, r2],
+        CFEI(_imm) => vec![],
+        CFSI(_imm) => vec![],
+        LB(r1, r2, _i) => vec![r1, r2],
+        LWDataId(r1, _i) => vec![r1],
+        LW(r1, r2, _i) => vec![r1, r2],
+        ALOC(r1) => vec![r1],
+        MCL(r1, r2) => vec![r1, r2],
+        MCLI(r1, _imm) => vec![r1],
+        MCP(r1, r2, r3) => vec![r1, r2, r3],
+        MEQ(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+        MCPI(r1, r2, _imm) => vec![r1, r2],
+        SB(r1, r2, _i) => vec![r1, r2],
+        SW(r1, r2, _i) => vec![r1, r2],
+        BAL(r1, r2, r3) => vec![r1, r2, r3],
+        BHSH(r1, r2) => vec![r1, r2],
+        BHEI(r1) => vec![r1],
+        BURN(r1) => vec![r1],
+        CALL(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+        CCP(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+        CROO(r1, r2) => vec![r1, r2],
+        CSIZ(r1, r2) => vec![r1, r2],
+        CB(r1) => vec![r1],
+        LDC(r1, r2, r3) => vec![r1, r2, r3],
+        LOG(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+        MINT(r1) => vec![r1],
+        RVRT(r1) => vec![r1],
+        SLDC(r1, r2, r3) => vec![r1, r2, r3],
+        SRW(r1, r2) => vec![r1, r2],
+        SRWQ(r1, r2) => vec![r1, r2],
+        SWW(r1, r2) => vec![r1, r2],
+        SWWQ(r1, r2) => vec![r1, r2],
+        TR(r1, r2, r3) => vec![r1, r2, r3],
+        TRO(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+        ECR(r1, r2, r3) => vec![r1, r2, r3],
+        K256(r1, r2, r3) => vec![r1, r2, r3],
+        S256(r1, r2, r3) => vec![r1, r2, r3],
+        XOS(r1, r2) => vec![r1, r2],
+        NOOP => vec![],
+        FLAG(r1) => vec![r1],
+        GM(r1, _imm) => vec![r1],
+        Undefined | DataSectionOffsetPlaceholder => vec![],
+        DataSectionRegisterLoadPlaceholder => vec![
+            &VirtualRegister::Constant(ConstantRegister::DataSectionStart),
+            &VirtualRegister::Constant(ConstantRegister::InstructionStart),
+        ],*/
+        //        };
+        //        .into_iter()
+        //        .collect()
+    }
+
     pub(crate) fn allocate_registers(
         &self,
         pool: &mut RegisterPool,
