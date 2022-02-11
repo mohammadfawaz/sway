@@ -229,48 +229,29 @@ impl VirtualOp {
     ) -> Self {
         use VirtualOp::*;
         match self {
-            ADD(r1, r2, r3) => {
-                let new_add = Self::ADD(
-                    if let Some(r) = full_map.get(&r1) {
-                        println!("Here 1: {:#?}", r1.clone());
-                        println!("Here 1: {:#?}", r.clone());
-                        r.clone()
-                    } else {
-                        r1.clone()
-                    },
-                    if let Some(r) = full_map.get(&r2) {
-                        println!("Here 2: {:#?}", r2.clone());
-                        println!("Here 2: {:#?}", r.clone());
-                        r.clone()
-                    } else {
-                        r2.clone()
-                    },
-                    if let Some(r) = full_map.get(&r3) {
-                        println!("Here 3: {:#?}", r3.clone());
-                        println!("Here 3: {:#?}", r.clone());
-                        r.clone()
-                    } else {
-                        r3.clone()
-                    },
-                );
-                println!("new add: {:#?}", new_add);
-                new_add
-            }
+            ADD(r1, r2, r3) => Self::ADD(
+                update_reg(&full_map, &r1),
+                update_reg(&full_map, &r2),
+                update_reg(&full_map, &r3)
+            ),
             LWDataId(r1, i) => Self::LWDataId(
-                if let Some(r) = full_map.get(&r1) {
-                    r.clone()
-                } else {
-                    r1.clone()
-                },
-                i.clone(),
+                update_reg(&full_map, &r1),
+                i.clone()
             ),
             RET(r1) => Self::RET(
-                if let Some(r) = full_map.get(&r1) {
-                    r.clone()
-                } else {
-                    r1.clone()
-                }
+                update_reg(&full_map, &r1)
+                ),
+            JNEI(r1, r2, i) => Self::JNEI(
+                update_reg(&full_map, &r1),
+                update_reg(&full_map, &r2),
+                i.clone()
             ),
+            EQ(r1, r2, r3) => Self::EQ(
+                update_reg(&full_map, &r1),
+                update_reg(&full_map, &r2),
+                update_reg(&full_map, &r3)
+                ),
+            RVRT(reg1) => Self::RVRT(update_reg(&full_map, &reg1)),
             _ => self.clone(),
         }
         /*ADDI(r1, r2, _i) => vec![r1, r2],
@@ -702,6 +683,17 @@ fn map_reg(
     reg: &VirtualRegister,
 ) -> AllocatedRegister {
     mapping.get(reg).unwrap().clone()
+}
+
+fn update_reg(
+    full_map: &HashMap<VirtualRegister, VirtualRegister>,
+    reg: &VirtualRegister,
+) -> VirtualRegister {
+    if let Some(r) = full_map.get(&reg) {
+        r.clone()
+    } else {
+        reg.clone()
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]

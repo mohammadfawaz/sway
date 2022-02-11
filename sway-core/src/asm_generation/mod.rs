@@ -230,17 +230,14 @@ impl RealizedAbstractInstructionSet {
         // Normalize
         let buf1_new = buf1
             .into_iter()
-            .map(|op| {
-                RealizedOp {
-                    opcode: op.opcode.update_register(&full_map),
-                    comment: op.comment.clone(),
-                    owning_span: op.owning_span.clone(),
-                }
+            .map(|op| RealizedOp {
+                opcode: op.opcode.update_register(&full_map),
+                comment: op.comment.clone(),
+                owning_span: op.owning_span.clone(),
             })
             .collect::<Vec<_>>();
 
         println!("buf1_new: {:#?}", buf1_new);
-
 
         // construct a mapping from every op to the registers it uses
         let op_register_mapping_2: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = buf1_new
