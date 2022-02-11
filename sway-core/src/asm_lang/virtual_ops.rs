@@ -246,7 +246,6 @@ impl VirtualOp {
                 update_reg(&full_map, &r1),
                 update_reg(&full_map, &r2),
                 update_virtual_immediate_12(&inst_index, i),
-//                i.clone()
             ),
             EQ(r1, r2, r3) => Self::EQ(
                 update_reg(&full_map, &r1),
@@ -254,6 +253,7 @@ impl VirtualOp {
                 update_reg(&full_map, &r3)
                 ),
             RVRT(reg1) => Self::RVRT(update_reg(&full_map, &reg1)),
+            JI(i) => Self::JI(update_virtual_immediate_24(&inst_index, i)),
             _ => self.clone(),
         }
         /*ADDI(r1, r2, _i) => vec![r1, r2],
@@ -702,19 +702,25 @@ fn update_virtual_immediate_12(
     inst_index: &HashMap<usize, usize>,
     idx: &VirtualImmediate12,
 ) -> VirtualImmediate12 {
-    println!("HERE: ");
-    println!("inst_index: {:#?}", inst_index);
-    println!("old index: {}", idx.value);
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        println!("new index: {}", i);
-       VirtualImmediate12 {value : i.clone() as u16 }
+        VirtualImmediate12 {value : i.clone() as u16 }
     } else {
         // Really an internal compiler error
         idx.clone()
     }
 }
 
-
+fn update_virtual_immediate_24(
+    inst_index: &HashMap<usize, usize>,
+    idx: &VirtualImmediate24,
+) -> VirtualImmediate24 {
+    if let Some(i) = inst_index.get(&(idx.value as usize)) {
+        VirtualImmediate24 {value : i.clone() as u32 }
+    } else {
+        // Really an internal compiler error
+        idx.clone()
+    }
+}
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 /// A label for a spot in the bytecode, to be later compiled to an offset.

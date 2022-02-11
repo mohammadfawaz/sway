@@ -196,7 +196,8 @@ impl RealizedAbstractInstructionSet {
         let mut buf1 = vec![];
         let mut old_to_new_reg: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
         let mut inst_index: HashMap<usize, usize> = HashMap::new();
-        let mut current_index:usize = 0;
+        let mut new_index:usize = 0; // account for DataSectionOffsetPlaceholder
+        let mut old_index:usize = 0; // account for DataSectionOffsetPlaceholder
         for (ix, (op, _)) in op_register_mapping.iter().enumerate() {
             if let VirtualOp::MOVE(r1, r2) = &op.opcode {
                 let idx1 = virtual_register_to_graph_indices.get(&r1).unwrap();
@@ -213,12 +214,21 @@ impl RealizedAbstractInstructionSet {
                 //                    println!("are we here?\n");
                 //                    op_register_mapping[i].0.opcode.update_register(r1.clone(), r2.clone());
                 //                }
+                inst_index.insert(old_index, new_index);
+                old_index += 1; 
+            } else if let VirtualOp::DataSectionOffsetPlaceholder = &op.opcode {
+                old_index += 2; 
+                new_index += 2; 
+                inst_index.insert(old_index-1, new_index-1);
+                inst_index.insert(old_index, new_index);
+                buf1.push(op);
             } else {
                 println!("ix: {}", ix);
-                println!("current_index: {}", current_index);
-                inst_index.insert(ix, current_index);
+                println!("new_index: {}", new_index);
+                inst_index.insert(old_index, new_index);
                 buf1.push(op);
-                current_index = current_index + 1; 
+                old_index += 1; 
+                new_index += 1; 
             }
         }
 
