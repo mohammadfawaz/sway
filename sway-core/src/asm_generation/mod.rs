@@ -111,7 +111,7 @@ impl RealizedAbstractInstructionSet {
 
         // construct a mapping from every op to the registers it uses
         let op_register_mapping: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = self
-            .ops
+            .ops.clone()
             .into_iter()
             .map(|op| {
                 (
@@ -120,6 +120,8 @@ impl RealizedAbstractInstructionSet {
                 )
             })
             .collect::<Vec<_>>();
+
+        println!("Ops: {:#?}", self.ops);
 
         // Undirected interference graph
         let mut graph = Graph::<VirtualRegister, (), petgraph::Undirected>::new_undirected();
@@ -213,7 +215,7 @@ impl RealizedAbstractInstructionSet {
                 //                }
             } else {
                 println!("ix: {}", ix);
-                println!("current_index: {}", current_index);;
+                println!("current_index: {}", current_index);
                 inst_index.insert(ix, current_index);
                 buf1.push(op);
                 current_index = current_index + 1; 
