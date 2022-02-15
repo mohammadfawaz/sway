@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::fmt;
 
 /// 6-bit immediate value type
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
 pub struct VirtualImmediate06 {
     pub(crate) value: u8,
 }
@@ -31,7 +31,7 @@ impl fmt::Display for VirtualImmediate06 {
 }
 
 /// 12-bits immediate value type
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
 pub struct VirtualImmediate12 {
     pub(crate) value: u16,
 }
@@ -67,7 +67,7 @@ impl fmt::Display for VirtualImmediate12 {
 }
 
 /// 18-bits immediate value type
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
 pub struct VirtualImmediate18 {
     pub(crate) value: u32,
 }
@@ -102,7 +102,7 @@ impl fmt::Display for VirtualImmediate18 {
 }
 
 /// 24-bits immediate value type
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
 pub struct VirtualImmediate24 {
     pub(crate) value: u32,
 }

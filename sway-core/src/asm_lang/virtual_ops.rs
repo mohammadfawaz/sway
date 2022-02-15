@@ -21,7 +21,7 @@ use std::fmt;
 /// between virtual ops and the real opcodes. A bit of copy/paste seemed worth it for that safety,
 /// so here it is.
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug, PartialEq, Eq)]
 pub(crate) enum VirtualOp {
     ADD(VirtualRegister, VirtualRegister, VirtualRegister),
     ADDI(VirtualRegister, VirtualRegister, VirtualImmediate12),
@@ -223,8 +223,279 @@ impl VirtualOp {
         .collect()
     }
 
+    pub(crate) fn use_registers(&self) -> BTreeSet<&VirtualRegister> {
+        use VirtualOp::*;
+        (match self {
+            ADD(r1, r2, r3) => vec![r2, r3],
+            ADDI(r1, r2, _i) => vec![r1, r2],
+            AND(r1, r2, r3) => vec![r1, r2, r3],
+            ANDI(r1, r2, _i) => vec![r1, r2],
+            DIV(r1, r2, r3) => vec![r1, r2, r3],
+            DIVI(r1, r2, _i) => vec![r1, r2],
+            EQ(r1, r2, r3) => vec![r2, r3],
+            EXP(r1, r2, r3) => vec![r1, r2, r3],
+            EXPI(r1, r2, _i) => vec![r1, r2],
+            GT(r1, r2, r3) => vec![r1, r2, r3],
+            LT(r1, r2, r3) => vec![r2, r3],
+            MLOG(r1, r2, r3) => vec![r1, r2, r3],
+            MROO(r1, r2, r3) => vec![r1, r2, r3],
+            MOD(r1, r2, r3) => vec![r1, r2, r3],
+            MODI(r1, r2, _i) => vec![r1, r2],
+            MOVE(r1, r2) => vec![r2],
+            MUL(r1, r2, r3) => vec![r1, r2, r3],
+            MULI(r1, r2, _i) => vec![r1, r2],
+            NOT(r1, r2) => vec![r1, r2],
+            OR(r1, r2, r3) => vec![r1, r2, r3],
+            ORI(r1, r2, _i) => vec![r1, r2],
+            SLL(r1, r2, r3) => vec![r1, r2, r3],
+            SLLI(r1, r2, _i) => vec![r1, r2],
+            SRL(r1, r2, r3) => vec![r1, r2, r3],
+            SRLI(r1, r2, _i) => vec![r1, r2],
+            SUB(r1, r2, r3) => vec![r1, r2, r3],
+            SUBI(r1, r2, _i) => vec![r1, r2],
+            XOR(r1, r2, r3) => vec![r1, r2, r3],
+            XORI(r1, r2, _i) => vec![r1, r2],
+            CIMV(r1, r2, r3) => vec![r1, r2, r3],
+            CTMV(r1, r2) => vec![r1, r2],
+            JI(_im) => vec![],
+            JNEI(r1, r2, _i) => vec![r1, r2],
+            RET(r1) => vec![r1],
+            RETD(r1, r2) => vec![r1, r2],
+            CFEI(_imm) => vec![],
+            CFSI(_imm) => vec![],
+            LB(r1, r2, _i) => vec![r1, r2],
+            LWDataId(r1, _i) => vec![],
+            LW(r1, r2, _i) => vec![r1, r2],
+            ALOC(r1) => vec![r1],
+            MCL(r1, r2) => vec![r1, r2],
+            MCLI(r1, _imm) => vec![r1],
+            MCP(r1, r2, r3) => vec![r1, r2, r3],
+            MEQ(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            MCPI(r1, r2, _imm) => vec![r1, r2],
+            SB(r1, r2, _i) => vec![r1, r2],
+            SW(r1, r2, _i) => vec![r1, r2],
+            BAL(r1, r2, r3) => vec![r1, r2, r3],
+            BHSH(r1, r2) => vec![r1, r2],
+            BHEI(r1) => vec![r1],
+            BURN(r1) => vec![r1],
+            CALL(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            CCP(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            CROO(r1, r2) => vec![r1, r2],
+            CSIZ(r1, r2) => vec![r1, r2],
+            CB(r1) => vec![r1],
+            LDC(r1, r2, r3) => vec![r1, r2, r3],
+            LOG(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            MINT(r1) => vec![r1],
+            RVRT(r1) => vec![r1],
+            SLDC(r1, r2, r3) => vec![r1, r2, r3],
+            SRW(r1, r2) => vec![r1, r2],
+            SRWQ(r1, r2) => vec![r1, r2],
+            SWW(r1, r2) => vec![r1, r2],
+            SWWQ(r1, r2) => vec![r1, r2],
+            TR(r1, r2, r3) => vec![r1, r2, r3],
+            TRO(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            ECR(r1, r2, r3) => vec![r1, r2, r3],
+            K256(r1, r2, r3) => vec![r1, r2, r3],
+            S256(r1, r2, r3) => vec![r1, r2, r3],
+            XOS(r1, r2) => vec![r1, r2],
+            NOOP => vec![],
+            FLAG(r1) => vec![r1],
+            GM(r1, _imm) => vec![r1],
+            Undefined | DataSectionOffsetPlaceholder => vec![],
+            DataSectionRegisterLoadPlaceholder => vec![
+            //                &VirtualRegister::Constant(ConstantRegister::DataSectionStart),
+            //                &VirtualRegister::Constant(ConstantRegister::InstructionStart),
+                        ],
+        })
+        .into_iter()
+        .collect()
+    }
+
+    pub(crate) fn def_registers(&self) -> BTreeSet<&VirtualRegister> {
+        use VirtualOp::*;
+        (match self {
+            ADD(r1, r2, r3) => vec![r1],
+            ADDI(r1, r2, _i) => vec![r1, r2],
+            AND(r1, r2, r3) => vec![r1, r2, r3],
+            ANDI(r1, r2, _i) => vec![r1, r2],
+            DIV(r1, r2, r3) => vec![r1, r2, r3],
+            DIVI(r1, r2, _i) => vec![r1, r2],
+            EQ(r1, r2, r3) => vec![r1],
+            EXP(r1, r2, r3) => vec![r1, r2, r3],
+            EXPI(r1, r2, _i) => vec![r1, r2],
+            GT(r1, r2, r3) => vec![r1, r2, r3],
+            LT(r1, r2, r3) => vec![r1],
+            MLOG(r1, r2, r3) => vec![r1, r2, r3],
+            MROO(r1, r2, r3) => vec![r1, r2, r3],
+            MOD(r1, r2, r3) => vec![r1, r2, r3],
+            MODI(r1, r2, _i) => vec![r1, r2],
+            MOVE(r1, r2) => vec![r1],
+            MUL(r1, r2, r3) => vec![r1, r2, r3],
+            MULI(r1, r2, _i) => vec![r1, r2],
+            NOT(r1, r2) => vec![r1, r2],
+            OR(r1, r2, r3) => vec![r1, r2, r3],
+            ORI(r1, r2, _i) => vec![r1, r2],
+            SLL(r1, r2, r3) => vec![r1, r2, r3],
+            SLLI(r1, r2, _i) => vec![r1, r2],
+            SRL(r1, r2, r3) => vec![r1, r2, r3],
+            SRLI(r1, r2, _i) => vec![r1, r2],
+            SUB(r1, r2, r3) => vec![r1, r2, r3],
+            SUBI(r1, r2, _i) => vec![r1, r2],
+            XOR(r1, r2, r3) => vec![r1, r2, r3],
+            XORI(r1, r2, _i) => vec![r1, r2],
+            CIMV(r1, r2, r3) => vec![r1, r2, r3],
+            CTMV(r1, r2) => vec![r1, r2],
+            JI(_im) => vec![],
+            JNEI(r1, r2, _i) => vec![],
+            RET(r1) => vec![],
+            RETD(r1, r2) => vec![r1, r2],
+            CFEI(_imm) => vec![],
+            CFSI(_imm) => vec![],
+            LB(r1, r2, _i) => vec![r1, r2],
+            LWDataId(r1, _i) => vec![r1],
+            LW(r1, r2, _i) => vec![r1, r2],
+            ALOC(r1) => vec![r1],
+            MCL(r1, r2) => vec![r1, r2],
+            MCLI(r1, _imm) => vec![r1],
+            MCP(r1, r2, r3) => vec![r1, r2, r3],
+            MEQ(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            MCPI(r1, r2, _imm) => vec![r1, r2],
+            SB(r1, r2, _i) => vec![r1, r2],
+            SW(r1, r2, _i) => vec![r1, r2],
+            BAL(r1, r2, r3) => vec![r1, r2, r3],
+            BHSH(r1, r2) => vec![r1, r2],
+            BHEI(r1) => vec![r1],
+            BURN(r1) => vec![r1],
+            CALL(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            CCP(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            CROO(r1, r2) => vec![r1, r2],
+            CSIZ(r1, r2) => vec![r1, r2],
+            CB(r1) => vec![r1],
+            LDC(r1, r2, r3) => vec![r1, r2, r3],
+            LOG(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            MINT(r1) => vec![r1],
+            RVRT(r1) => vec![],
+            SLDC(r1, r2, r3) => vec![r1, r2, r3],
+            SRW(r1, r2) => vec![r1, r2],
+            SRWQ(r1, r2) => vec![r1, r2],
+            SWW(r1, r2) => vec![r1, r2],
+            SWWQ(r1, r2) => vec![r1, r2],
+            TR(r1, r2, r3) => vec![r1, r2, r3],
+            TRO(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            ECR(r1, r2, r3) => vec![r1, r2, r3],
+            K256(r1, r2, r3) => vec![r1, r2, r3],
+            S256(r1, r2, r3) => vec![r1, r2, r3],
+            XOS(r1, r2) => vec![r1, r2],
+            NOOP => vec![],
+            FLAG(r1) => vec![r1],
+            GM(r1, _imm) => vec![r1],
+            Undefined | DataSectionOffsetPlaceholder => vec![],
+            DataSectionRegisterLoadPlaceholder => vec![
+            //                &VirtualRegister::Constant(ConstantRegister::DataSectionStart),
+            //                &VirtualRegister::Constant(ConstantRegister::InstructionStart),
+                        ],
+        })
+        .into_iter()
+        .collect()
+    }
+
+    pub(crate) fn successors(&self, index: usize, ops: &[RealizedOp]) -> Vec<RealizedOp> {
+        use VirtualOp::*;
+        let next_op = if index >= ops.len() - 1 {
+            vec![]
+        } else {
+            vec![ops[index + 1].clone()]
+        };
+        match self {
+            ADD(r1, r2, r3) => next_op,
+            //            ADDI(r1, r2, _i) => vec![r1, r2],
+            //            AND(r1, r2, r3) => vec![r1, r2, r3],
+            //            ANDI(r1, r2, _i) => vec![r1, r2],
+            //            DIV(r1, r2, r3) => vec![r1, r2, r3],
+            //            DIVI(r1, r2, _i) => vec![r1, r2],
+            EQ(r1, r2, r3) => next_op,
+            //            EXP(r1, r2, r3) => vec![r1, r2, r3],
+            //            EXPI(r1, r2, _i) => vec![r1, r2],
+            //            GT(r1, r2, r3) => vec![r1, r2, r3],
+            LT(r1, r2, r3) => next_op,
+            //            MLOG(r1, r2, r3) => vec![r1, r2, r3],
+            //            MROO(r1, r2, r3) => vec![r1, r2, r3],
+            //            MOD(r1, r2, r3) => vec![r1, r2, r3],
+            //            MODI(r1, r2, _i) => vec![r1, r2],
+            MOVE(r1, r2) => next_op,
+            //            MUL(r1, r2, r3) => vec![r1, r2, r3],
+            //            MULI(r1, r2, _i) => vec![r1, r2],
+            //            NOT(r1, r2) => vec![r1, r2],
+            //            OR(r1, r2, r3) => vec![r1, r2, r3],
+            //            ORI(r1, r2, _i) => vec![r1, r2],
+            //            SLL(r1, r2, r3) => vec![r1, r2, r3],
+            //            SLLI(r1, r2, _i) => vec![r1, r2],
+            //            SRL(r1, r2, r3) => vec![r1, r2, r3],
+            //            SRLI(r1, r2, _i) => vec![r1, r2],
+            //            SUB(r1, r2, r3) => vec![r1, r2, r3],
+            //            SUBI(r1, r2, _i) => vec![r1, r2],
+            //            XOR(r1, r2, r3) => vec![r1, r2, r3],
+            //            XORI(r1, r2, _i) => vec![r1, r2],
+            //            CIMV(r1, r2, r3) => vec![r1, r2, r3],
+            //            CTMV(r1, r2) => vec![r1, r2],
+            JI(i) => vec![ops[i.value as usize - 1].clone()],
+            JNEI(r1, r2, i) => vec![ops[i.value as usize - 1].clone()]
+                .into_iter()
+                .chain(next_op.into_iter())
+                .collect(),
+            RET(r1) => next_op,
+            //            RETD(r1, r2) => vec![r1, r2],
+            //            CFEI(_imm) => vec![],
+            //            CFSI(_imm) => vec![],
+            //            LB(r1, r2, _i) => vec![r1, r2],
+            LWDataId(r1, _i) => next_op,
+            //            LW(r1, r2, _i) => vec![r1, r2],
+            //            ALOC(r1) => vec![r1],
+            //            MCL(r1, r2) => vec![r1, r2],
+            //            MCLI(r1, _imm) => vec![r1],
+            //            MCP(r1, r2, r3) => vec![r1, r2, r3],
+            //            MEQ(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            //            MCPI(r1, r2, _imm) => vec![r1, r2],
+            //            SB(r1, r2, _i) => vec![r1, r2],
+            //            SW(r1, r2, _i) => vec![r1, r2],
+            //            BAL(r1, r2, r3) => vec![r1, r2, r3],
+            //            BHSH(r1, r2) => vec![r1, r2],
+            //            BHEI(r1) => vec![r1],
+            //            BURN(r1) => vec![r1],
+            //            CALL(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            //            CCP(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            //            CROO(r1, r2) => vec![r1, r2],
+            //            CSIZ(r1, r2) => vec![r1, r2],
+            //            CB(r1) => vec![r1],
+            //            LDC(r1, r2, r3) => vec![r1, r2, r3],
+            //            LOG(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            //            MINT(r1) => vec![r1],
+            RVRT(r1) => next_op,
+            //            SLDC(r1, r2, r3) => vec![r1, r2, r3],
+            //            SRW(r1, r2) => vec![r1, r2],
+            //            SRWQ(r1, r2) => vec![r1, r2],
+            //            SWW(r1, r2) => vec![r1, r2],
+            //            SWWQ(r1, r2) => vec![r1, r2],
+            //            TR(r1, r2, r3) => vec![r1, r2, r3],
+            //            TRO(r1, r2, r3, r4) => vec![r1, r2, r3, r4],
+            //            ECR(r1, r2, r3) => vec![r1, r2, r3],
+            //            K256(r1, r2, r3) => vec![r1, r2, r3],
+            //            S256(r1, r2, r3) => vec![r1, r2, r3],
+            //            XOS(r1, r2) => vec![r1, r2],
+            //            NOOP => vec![],
+            //            FLAG(r1) => vec![r1],
+            //            GM(r1, _imm) => vec![r1],
+            //            Undefined | DataSectionOffsetPlaceholder => vec![],
+            //            DataSectionRegisterLoadPlaceholder => vec![
+            //                &VirtualRegister::Constant(ConstantRegister::DataSectionStart),
+            //                &VirtualRegister::Constant(ConstantRegister::InstructionStart),
+            //            ],
+            _ => vec![],
+        }
+    }
+
     pub(crate) fn update_register(
-        &self,
+        &mut self,
         full_map: &HashMap<VirtualRegister, VirtualRegister>,
         inst_index: &HashMap<usize, usize>,
     ) -> Self {
@@ -233,15 +504,10 @@ impl VirtualOp {
             ADD(r1, r2, r3) => Self::ADD(
                 update_reg(&full_map, &r1),
                 update_reg(&full_map, &r2),
-                update_reg(&full_map, &r3)
+                update_reg(&full_map, &r3),
             ),
-            LWDataId(r1, i) => Self::LWDataId(
-                update_reg(&full_map, &r1),
-                i.clone()
-            ),
-            RET(r1) => Self::RET(
-                update_reg(&full_map, &r1)
-                ),
+            LWDataId(r1, i) => Self::LWDataId(update_reg(&full_map, &r1), i.clone()),
+            RET(r1) => Self::RET(update_reg(&full_map, &r1)),
             JNEI(r1, r2, i) => Self::JNEI(
                 update_reg(&full_map, &r1),
                 update_reg(&full_map, &r2),
@@ -250,8 +516,8 @@ impl VirtualOp {
             EQ(r1, r2, r3) => Self::EQ(
                 update_reg(&full_map, &r1),
                 update_reg(&full_map, &r2),
-                update_reg(&full_map, &r3)
-                ),
+                update_reg(&full_map, &r3),
+            ),
             RVRT(reg1) => Self::RVRT(update_reg(&full_map, &reg1)),
             JI(i) => Self::JI(update_virtual_immediate_24(&inst_index, i)),
             CFEI(i) => Self::CFEI(update_virtual_immediate_24(&inst_index, i)),
@@ -259,6 +525,14 @@ impl VirtualOp {
                 update_reg(&full_map, reg1),
                 update_reg(&full_map, reg2),
                 update_virtual_immediate_12(&inst_index, i),
+            ),
+            MOVE(r1, r2) => Self::MOVE(update_reg(&full_map, r1),
+            update_reg(&full_map, r2),
+            ),
+            LT(r1, r2, r3) => Self::LT(
+                update_reg(&full_map, &r1),
+                update_reg(&full_map, &r2),
+                update_reg(&full_map, &r3),
             ),
             _ => self.clone(),
         }
@@ -271,12 +545,10 @@ impl VirtualOp {
         EXP(r1, r2, r3) => vec![r1, r2, r3],
         EXPI(r1, r2, _i) => vec![r1, r2],
         GT(r1, r2, r3) => vec![r1, r2, r3],
-        LT(r1, r2, r3) => vec![r1, r2, r3],
         MLOG(r1, r2, r3) => vec![r1, r2, r3],
         MROO(r1, r2, r3) => vec![r1, r2, r3],
         MOD(r1, r2, r3) => vec![r1, r2, r3],
         MODI(r1, r2, _i) => vec![r1, r2],
-        MOVE(r1, r2) => vec![r1, r2],
         MUL(r1, r2, r3) => vec![r1, r2, r3],
         MULI(r1, r2, _i) => vec![r1, r2],
         NOT(r1, r2) => vec![r1, r2],
@@ -709,7 +981,9 @@ fn update_virtual_immediate_12(
     idx: &VirtualImmediate12,
 ) -> VirtualImmediate12 {
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        VirtualImmediate12 {value : i.clone() as u16 }
+        VirtualImmediate12 {
+            value: i.clone() as u16,
+        }
     } else {
         // Really an internal compiler error
         idx.clone()
@@ -721,7 +995,9 @@ fn update_virtual_immediate_24(
     idx: &VirtualImmediate24,
 ) -> VirtualImmediate24 {
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        VirtualImmediate24 {value : i.clone() as u32 }
+        VirtualImmediate24 {
+            value: i.clone() as u32,
+        }
     } else {
         // Really an internal compiler error
         idx.clone()
