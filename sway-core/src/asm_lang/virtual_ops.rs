@@ -10,7 +10,7 @@ use super::{
     virtual_register::*,
     DataId, RealizedOp,
 };
-use crate::asm_generation::RegisterPool;
+use crate::asm_generation::{RegPool, RegisterPool};
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -502,37 +502,35 @@ impl VirtualOp {
         use VirtualOp::*;
         match self {
             ADD(r1, r2, r3) => Self::ADD(
-                update_reg(&full_map, &r1),
-                update_reg(&full_map, &r2),
-                update_reg(&full_map, &r3),
+                update_reg(full_map, r1),
+                update_reg(full_map, r2),
+                update_reg(full_map, r3),
             ),
-            LWDataId(r1, i) => Self::LWDataId(update_reg(&full_map, &r1), i.clone()),
-            RET(r1) => Self::RET(update_reg(&full_map, &r1)),
+            LWDataId(r1, i) => Self::LWDataId(update_reg(full_map, r1), i.clone()),
+            RET(r1) => Self::RET(update_reg(full_map, r1)),
             JNEI(r1, r2, i) => Self::JNEI(
-                update_reg(&full_map, &r1),
-                update_reg(&full_map, &r2),
-                update_virtual_immediate_12(&inst_index, i),
+                update_reg(full_map, r1),
+                update_reg(full_map, r2),
+                update_virtual_immediate_12(inst_index, i),
             ),
             EQ(r1, r2, r3) => Self::EQ(
-                update_reg(&full_map, &r1),
-                update_reg(&full_map, &r2),
-                update_reg(&full_map, &r3),
+                update_reg(full_map, r1),
+                update_reg(full_map, r2),
+                update_reg(full_map, r3),
             ),
-            RVRT(reg1) => Self::RVRT(update_reg(&full_map, &reg1)),
-            JI(i) => Self::JI(update_virtual_immediate_24(&inst_index, i)),
-            CFEI(i) => Self::CFEI(update_virtual_immediate_24(&inst_index, i)),
+            RVRT(reg1) => Self::RVRT(update_reg(full_map, reg1)),
+            JI(i) => Self::JI(update_virtual_immediate_24(inst_index, i)),
+            CFEI(i) => Self::CFEI(update_virtual_immediate_24(inst_index, i)),
             MCPI(reg1, reg2, i) => Self::MCPI(
-                update_reg(&full_map, reg1),
-                update_reg(&full_map, reg2),
-                update_virtual_immediate_12(&inst_index, i),
+                update_reg(full_map, reg1),
+                update_reg(full_map, reg2),
+                update_virtual_immediate_12(inst_index, i),
             ),
-            MOVE(r1, r2) => Self::MOVE(update_reg(&full_map, r1),
-            update_reg(&full_map, r2),
-            ),
+            MOVE(r1, r2) => Self::MOVE(update_reg(full_map, r1), update_reg(full_map, r2)),
             LT(r1, r2, r3) => Self::LT(
-                update_reg(&full_map, &r1),
-                update_reg(&full_map, &r2),
-                update_reg(&full_map, &r3),
+                update_reg(full_map, r1),
+                update_reg(full_map, r2),
+                update_reg(full_map, r3),
             ),
             _ => self.clone(),
         }
@@ -623,6 +621,7 @@ impl VirtualOp {
         pool: &mut RegisterPool,
         op_register_mapping: &[(RealizedOp, BTreeSet<VirtualRegister>)],
         ix: usize,
+        pool1: &mut RegPool,
     ) -> AllocatedOpcode {
         let virtual_registers = self.registers();
         let register_allocation_result = virtual_registers
@@ -631,12 +630,17 @@ impl VirtualOp {
             .map(|x| match x {
                 VirtualRegister::Constant(c) => (x, Some(AllocatedRegister::Constant(c.clone()))),
                 VirtualRegister::Virtual(_) => {
-                    (x, pool.get_register(x, &op_register_mapping[ix..]))
+                    //                    (x, pool.get_register(x, &op_register_mapping[ix..]))
+                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
                 }
             })
             .map(|(x, register_opt)| register_opt.map(|register| (x, register)))
             .collect::<Option<Vec<_>>>();
-
+        println!("Op: {:#?}", self);
+        println!(
+            "register_allocation_result: {:#?}",
+            register_allocation_result
+        );
         // Maps virtual registers to their allocated equivalent
         let mut mapping = HashMap::default();
         match register_allocation_result {
@@ -969,7 +973,7 @@ fn update_reg(
     full_map: &HashMap<VirtualRegister, VirtualRegister>,
     reg: &VirtualRegister,
 ) -> VirtualRegister {
-    if let Some(r) = full_map.get(&reg) {
+    if let Some(r) = full_map.get(reg) {
         r.clone()
     } else {
         reg.clone()
@@ -981,9 +985,7 @@ fn update_virtual_immediate_12(
     idx: &VirtualImmediate12,
 ) -> VirtualImmediate12 {
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        VirtualImmediate12 {
-            value: i.clone() as u16,
-        }
+        VirtualImmediate12 { value: *i as u16 }
     } else {
         // Really an internal compiler error
         idx.clone()
@@ -995,9 +997,7 @@ fn update_virtual_immediate_24(
     idx: &VirtualImmediate24,
 ) -> VirtualImmediate24 {
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        VirtualImmediate24 {
-            value: i.clone() as u32,
-        }
+        VirtualImmediate24 { value: *i as u32 }
     } else {
         // Really an internal compiler error
         idx.clone()

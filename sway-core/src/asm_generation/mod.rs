@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt,
 };
 
@@ -22,7 +22,6 @@ use crate::{
     BuildConfig, Ident, TypeInfo,
 };
 use either::Either;
-use petgraph::graph::{Graph, NodeIndex};
 
 pub(crate) mod checks;
 pub(crate) mod compiler_constants;
@@ -30,6 +29,7 @@ mod declaration;
 mod expression;
 mod finalized_asm;
 pub(crate) mod from_ir;
+pub(crate) mod register_allocator;
 mod register_sequencer;
 mod while_loop;
 
@@ -109,199 +109,48 @@ impl RealizedAbstractInstructionSet {
         // For now, just keep a pool of registers and return
         // registers when they are not read anymore
 
-        println!("Ops: {:#?}", self.ops);
+        let (live_in, live_out) = register_allocator::generate_liveness_tables(&self.ops);
 
-        // Liveness analysis
+        let (mut interference_graph, mut reg_to_node) =
+            register_allocator::create_interference_graph(&self.ops, &live_in, &live_out);
 
-        let mut live_in: HashMap<RealizedOp, BTreeSet<VirtualRegister>> = HashMap::new();
-        let mut live_out: HashMap<RealizedOp, BTreeSet<VirtualRegister>> = HashMap::new();
+        let buf = register_allocator::coalesce_registers(
+            &mut self.ops,
+            &mut interference_graph,
+            &mut reg_to_node,
+        );
 
-        for op in &self.ops {
-            live_in.insert(op.clone(), BTreeSet::new());
-            live_out.insert(op.clone(), BTreeSet::new());
-        }
+        let mut stack = register_allocator::simplify(&mut interference_graph, 47);
 
-        let len = self.ops.len();
-        let mut modified: bool;
-        while {
-            modified = false;
-            for (index, op) in self.ops.iter().rev().enumerate() {
-                let rev_index = len - index - 1;
-                let op_use = op.opcode.use_registers();
-                let op_def = op.opcode.def_registers();
+        let allocations: BTreeMap<VirtualRegister, AllocatedRegister> = BTreeMap::new();
 
-                // Compute LIVE_out(op) = LIVE_in(s1) UNION LIVE_in(s2) UNION ... where s1, s2, ... are
-                // successors of op
-                let previous_live_out_for_op = live_out.get_mut(op).unwrap().clone();
+        let mut pool1 = RegPool::init();
+        while let Some((vreg, vregs)) = stack.pop() {
+            let allocated_reg =
+                match vreg {
+                    VirtualRegister::Constant(c) => AllocatedRegister::Constant(c.clone()),
+                    VirtualRegister::Virtual(_) => {
+                        // Goal: find allocated register $r in pool such that
+                        // neighbors(reg) (i.e. vregs) and pool.registers[ .. $r ..].used_by() do not
+                        // intersection. That is, $r is not used by an of reg's neighbors
+                        // I think BTreeSet should have an intersect method.
+                        let next_available = pool1.registers.iter_mut().find(
+                            |RegAllocationStatus { reg, used_by }| {
+                                vregs.intersection(used_by).count() == 0
+                            },
+                        );
+                        if let Some(RegAllocationStatus { reg, used_by }) = next_available {
+                            used_by.insert(vreg.clone());
+                        }
 
-                for s in &op.opcode.successors(rev_index, &self.ops) {
-                    let live_in_s = live_in.get(s).unwrap().clone();
-                    for l in &live_in_s {
-                        live_out.get_mut(op).unwrap().insert(l.clone());
+                        // This is wrong of course, I just want the code to compile
+                        AllocatedRegister::Allocated(0)
                     }
-                }
-                if previous_live_out_for_op != live_out.get_mut(op).unwrap().clone() {
-                    modified = true;
-                }
-
-                // Compute LIVE_in(op) = use(op) UNION (LIVE_out(op) - def(op))
-                // Add use(op)
-                let previous_live_in_for_op = live_in.get_mut(op).unwrap().clone();
-                for u in op_use {
-                    live_in.get_mut(op).unwrap().insert(u.clone());
-                }
-
-                // Add LIVE_out(op) - def(op)
-                let mut live_out_minus_defs = live_out.get(op).unwrap().clone();
-                for d in &op_def {
-                    live_out_minus_defs.remove(d);
-                }
-
-                for l in &live_out_minus_defs {
-                    live_in.get_mut(op).unwrap().insert(l.clone());
-                }
-                if previous_live_in_for_op != live_in.get_mut(op).unwrap().clone() {
-                    modified = true;
-                }
-            }
-            modified
-        } {}
+                };
+        }
 
         // construct a mapping from every op to the registers it uses
-        let op_register_mapping: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = self
-            .ops
-            .clone()
-            .into_iter()
-            .map(|op| {
-                (
-                    op.clone(),
-                    op.opcode.registers().into_iter().cloned().collect(),
-                )
-            })
-            .collect::<Vec<_>>();
-
-        // Collect all virtual registers
-        let mut all_virtual_registers: BTreeSet<VirtualRegister> = BTreeSet::new();
-
-        for (_, regs) in op_register_mapping.clone() {
-            all_virtual_registers.append(&mut regs.clone());
-        }
-
-        // Create the interference graph
-        let mut interference_graph =
-            Graph::<VirtualRegister, (), petgraph::Undirected>::new_undirected();
-
-        let mut virtual_register_to_graph_indices: HashMap<VirtualRegister, NodeIndex> =
-            HashMap::new();
-
-        for reg in &all_virtual_registers {
-            let node_idx = interference_graph.add_node(reg.clone());
-            virtual_register_to_graph_indices.insert(reg.clone(), node_idx);
-        }
-
-        for regs in live_in.clone().values() {
-            let reg_vec: Vec<_> = regs.iter().collect();
-            let len = reg_vec.len();
-            for i in 0..len {
-                for j in (i + 1)..len {
-                    let node_idx1 = virtual_register_to_graph_indices.get(reg_vec[i]).unwrap();
-                    let node_idx2 = virtual_register_to_graph_indices.get(reg_vec[j]).unwrap();
-                    if !interference_graph.contains_edge(*node_idx1, *node_idx2) {
-                        interference_graph.add_edge(*node_idx1, *node_idx2, ());
-                    }
-                }
-            }
-        }
-
-        for regs in live_out.clone().values() {
-            let reg_vec: Vec<_> = regs.iter().collect();
-            let len = reg_vec.len();
-            for i in 0..len {
-                for j in (i + 1)..len {
-                    let node_idx1 = virtual_register_to_graph_indices.get(reg_vec[i]).unwrap();
-                    let node_idx2 = virtual_register_to_graph_indices.get(reg_vec[j]).unwrap();
-                    if !interference_graph.contains_edge(*node_idx1, *node_idx2) {
-                        interference_graph.add_edge(*node_idx1, *node_idx2, ());
-                    }
-                }
-            }
-        }
-
-        let mut buf:Vec<RealizedOp> = vec![];
-        let mut old_to_new_reg: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
-        let mut full_map: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
-        let mut inst_index: HashMap<usize, usize> = HashMap::new();
-        let mut new_index:usize = 0;
-        let mut old_index:usize = 0;
-        for i in 0..self.ops.len() {
-            if let VirtualOp::MOVE(r1, r2) = &self.ops[i].opcode {
-                let idx1 = virtual_register_to_graph_indices.get(&r1).unwrap();
-                let idx2 = virtual_register_to_graph_indices.get(&r2).unwrap();
-                if r1 == r2 {
-                    inst_index.insert(old_index, new_index);
-                    old_index += 1;
-                    new_index += 1;
-                    continue;
-                }
-                let move_is_needed = interference_graph.contains_edge(idx1.clone(), idx2.clone());
-
-                if move_is_needed {
-                    buf.push(self.ops[i].clone());
-                    inst_index.insert(old_index, new_index);
-                    old_index += 1;
-                    new_index += 1;
-                } else {
-                    let neighbors = interference_graph.neighbors(idx1.clone()).collect::<Vec<_>>();
-                    for neighbor in neighbors.clone() {
-                        if !interference_graph.contains_edge(neighbor, *idx2) {
-                            interference_graph.add_edge(neighbor, *idx2, ());
-                        }
-                    }
-                    for neighbor in neighbors {
-                        if let Some(edge) = interference_graph.find_edge(neighbor, *idx1) {
-                            interference_graph.remove_edge(edge);
-                        }
-                    }
-
-                    old_to_new_reg.insert(r1.clone(), r2.clone()); 
-                    inst_index.insert(old_index, new_index);
-                    old_index += 1;
-                    for (reg, _reg) in &old_to_new_reg {
-                        let mut temp = reg;
-                        while let Some(t) = old_to_new_reg.get(&temp) {
-                            temp = t;
-                        }
-                        full_map.insert(reg.clone(), temp.clone());
-                    }
-                    for j in 0..self.ops.len() {
-                        self.ops[j].opcode = self.ops[j].opcode.update_register(&full_map, &HashMap::new());
-                    }
-
-                    for j in 0..buf.len() {
-                        buf[j].opcode = buf[j].opcode.update_register(&full_map, &HashMap::new());
-                    }
-                } 
-            } else if let VirtualOp::DataSectionOffsetPlaceholder = &self.ops[i].opcode {
-                old_index += 2;
-                new_index += 2;
-                inst_index.insert(old_index - 2, new_index - 2);
-                inst_index.insert(old_index - 1, new_index - 1);
-                buf.push(self.ops[i].clone());
-            } else {
-                inst_index.insert(old_index, new_index);
-                buf.push(self.ops[i].clone());
-                old_index += 1;
-                new_index += 1;
-            }
-        }
-        for j in 0..buf.len() {
-            buf[j].opcode = buf[j].opcode.update_register(&full_map, &inst_index);
-        }
-
-        println!("Graph: {:#?}", interference_graph);
-
-        // construct a mapping from every op to the registers it uses
-        let op_register_mapping_2: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = buf
+        let op_register_mapping: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = buf
             .into_iter()
             .map(|op| {
                 (
@@ -316,9 +165,12 @@ impl RealizedAbstractInstructionSet {
         let mut buf = vec![];
         for (ix, (op, _)) in op_register_mapping.iter().enumerate() {
             buf.push(AllocatedOp {
-                opcode: op
-                    .opcode
-                    .allocate_registers(&mut pool, &op_register_mapping, ix),
+                opcode: op.opcode.allocate_registers(
+                    &mut pool,
+                    &op_register_mapping,
+                    ix,
+                    &mut pool1,
+                ),
                 comment: op.comment.clone(),
                 owning_span: op.owning_span.clone(),
             })
@@ -469,6 +321,50 @@ impl AbstractInstructionSet {
             };
         }
         RealizedAbstractInstructionSet { ops: realized_ops }
+    }
+}
+
+#[derive(Debug)]
+struct RegAllocationStatus {
+    reg: AllocatedRegister,
+    used_by: BTreeSet<VirtualRegister>,
+}
+
+#[derive(Debug)]
+pub(crate) struct RegPool {
+    registers: Vec<RegAllocationStatus>,
+}
+
+impl RegPool {
+    fn init() -> Self {
+        let reg_pool: Vec<RegAllocationStatus> = (0
+            // - 1 because we reserve the final register for the data_section begin
+            ..compiler_constants::NUM_ALLOCATABLE_REGISTERS)
+            .map(|x| RegAllocationStatus {
+                reg: AllocatedRegister::Allocated(x),
+                used_by: BTreeSet::new(),
+            })
+            .collect();
+        Self {
+            registers: reg_pool,
+        }
+    }
+
+    pub(crate) fn get_register(
+        &mut self,
+        virtual_register: &VirtualRegister,
+        op_register_mapping: &[(RealizedOp, std::collections::BTreeSet<VirtualRegister>)],
+    ) -> Option<AllocatedRegister> {
+        // find the next unused register, return it, assign it
+        let allocated_reg = self
+            .registers
+            .iter_mut()
+            .find(|RegAllocationStatus { reg, used_by }| used_by.contains(virtual_register));
+
+        match allocated_reg {
+            Some(RegAllocationStatus { reg, used_by }) => Some(reg.clone()),
+            None => None,
+        }
     }
 }
 
@@ -839,8 +735,6 @@ pub(crate) fn compile_ast_to_asm(
                     });
                     for (body, name) in const_decls {
                         let return_register = register_sequencer.next();
-                        //                        println!("body: {:#?}", body);
-                        //                        println!("name: {:#?}", name);
                         let mut buf = check!(
                             convert_expression_to_asm(
                                 body,
@@ -852,7 +746,6 @@ pub(crate) fn compile_ast_to_asm(
                             warnings,
                             errors
                         );
-                        //                        println!("buf 2: {:#?}", buf);
                         asm_buf.append(&mut buf);
                         namespace.insert_variable(name.clone(), return_register);
                     }
@@ -862,7 +755,6 @@ pub(crate) fn compile_ast_to_asm(
             );
             // start generating from the main function
             let return_register = register_sequencer.next();
-            //            println!("converting : {:#?}", main_function.body);
             let mut body = check!(
                 convert_code_block_to_asm(
                     &main_function.body,
@@ -876,7 +768,6 @@ pub(crate) fn compile_ast_to_asm(
                 errors
             );
 
-            //            println!("body 1: {:#?}\n", body);
             asm_buf.append(&mut body);
             asm_buf.append(&mut check!(
                 ret_or_retd_value(
@@ -936,7 +827,6 @@ pub(crate) fn compile_ast_to_asm(
                             warnings,
                             errors
                         );
-                        //                        println!("buf 2: {:#?}", buf);
                         asm_buf.append(&mut buf);
                         namespace.insert_variable(name.clone(), return_register);
                     }
@@ -956,7 +846,6 @@ pub(crate) fn compile_ast_to_asm(
                 warnings,
                 errors
             );
-            //            println!("body 2: {:#?}", body);
             asm_buf.append(&mut body);
 
             (
@@ -1006,7 +895,6 @@ pub(crate) fn compile_ast_to_asm(
                             errors
                         );
                         asm_buf.append(&mut buf);
-                        //                        println!("buf 3: {:#?}", buf);
                         namespace.insert_variable(name.clone(), return_register);
                     }
                     ok((), warnings, errors)
@@ -1272,7 +1160,6 @@ fn convert_node_to_asm(
             } else {
                 register_sequencer.next()
             };
-            //            println!("exp in ImplicitReturnExpression: {:#?}", exp);
             let ops = check!(
                 convert_expression_to_asm(exp, namespace, &return_register, register_sequencer),
                 return err(warnings, errors),
