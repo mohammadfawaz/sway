@@ -407,11 +407,26 @@ impl VirtualOp {
             vec![ops[index + 1].clone()]
         };
         match self {
-            JI(i) => vec![ops[i.value as usize - 1].clone()],
-            JNEI(_, _, i) => vec![ops[i.value as usize - 1].clone()]
-                .into_iter()
-                .chain(next_op.into_iter())
-                .collect(),
+            JI(i) =>  {
+                if i.value as usize - 1 >= ops.len() - 1 {
+                    vec![]
+                } else {
+                    vec![ops[i.value as usize - 1].clone()]
+                }
+            },
+            JNEI(_, _, i) => { 
+                if i.value as usize - 1 >= ops.len() - 1 {
+                     vec![]
+                    .into_iter()
+                    .chain(next_op.into_iter())
+                    .collect()
+                } else {
+                    vec![ops[i.value as usize - 1].clone()]
+                    .into_iter()
+                    .chain(next_op.into_iter())
+                    .collect()
+                }
+            },
             _ => next_op,
         }
     }
@@ -711,8 +726,8 @@ impl VirtualOp {
             .map(|x| match x {
                 VirtualRegister::Constant(c) => (x, Some(AllocatedRegister::Constant(c.clone()))),
                 VirtualRegister::Virtual(_) => {
-                    //  (x, pool.get_register(x, &op_register_mapping[ix..]))
-                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
+                    (x, pool.get_register(x, &op_register_mapping[ix..]))
+//                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
                 }
             })
             .map(|(x, register_opt)| register_opt.map(|register| (x, register)))

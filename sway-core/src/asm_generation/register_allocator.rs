@@ -186,6 +186,7 @@ pub(crate) fn coalesce_registers(
             new_index += 1;
         }
     }
+    inst_index.insert(old_index, new_index);
     for op in &mut buf {
         op.opcode = op.opcode.update_register(&full_map, &inst_index);
     }
