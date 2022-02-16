@@ -1,14 +1,10 @@
 use crate::asm_lang::{virtual_register::*, RealizedOp, VirtualOp};
-use petgraph::dot::Dot;
 use petgraph::graph::{Graph, NodeIndex};
 use std::collections::{BTreeSet, HashMap};
 
 pub(crate) fn generate_liveness_tables(
     ops: &[RealizedOp],
-) -> (
-    HashMap<RealizedOp, BTreeSet<VirtualRegister>>,
-    HashMap<RealizedOp, BTreeSet<VirtualRegister>>,
-) {
+) -> HashMap<RealizedOp, BTreeSet<VirtualRegister>> {
     let mut live_in: HashMap<RealizedOp, BTreeSet<VirtualRegister>> = HashMap::new();
     let mut live_out: HashMap<RealizedOp, BTreeSet<VirtualRegister>> = HashMap::new();
 
@@ -62,12 +58,11 @@ pub(crate) fn generate_liveness_tables(
         }
         modified
     } {}
-    (live_in, live_out)
+    live_out
 }
 
 pub(crate) fn create_interference_graph(
     ops: &[RealizedOp],
-    live_in: &HashMap<RealizedOp, BTreeSet<VirtualRegister>>,
     live_out: &HashMap<RealizedOp, BTreeSet<VirtualRegister>>,
 ) -> (
     Graph<VirtualRegister, (), petgraph::Undirected>,
@@ -91,7 +86,7 @@ pub(crate) fn create_interference_graph(
     for (op, regs) in live_out {
         match &op.opcode {
             VirtualOp::MOVE(a, c) => {
-                let node_idx1 = reg_to_node.get(&a).unwrap();
+                let node_idx1 = reg_to_node.get(a).unwrap();
                 for b in regs.iter() {
                     let node_idx2 = reg_to_node.get(b).unwrap();
                     if *b != *c && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
@@ -121,10 +116,7 @@ pub(crate) fn coalesce_registers(
     interference_graph: &mut Graph<VirtualRegister, (), petgraph::Undirected>,
     reg_to_node: &mut HashMap<VirtualRegister, NodeIndex>,
 ) -> Vec<RealizedOp> {
-    let graph = interference_graph.clone();
-
     let mut buf: Vec<RealizedOp> = vec![];
-
     let mut old_to_new_reg: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
     let mut full_map: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
     let mut inst_index: HashMap<usize, usize> = HashMap::new();

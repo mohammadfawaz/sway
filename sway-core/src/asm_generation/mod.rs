@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     fmt,
 };
 
@@ -109,10 +109,10 @@ impl RealizedAbstractInstructionSet {
         // For now, just keep a pool of registers and return
         // registers when they are not read anymore
 
-        let (live_in, live_out) = register_allocator::generate_liveness_tables(&self.ops);
+        let live_out = register_allocator::generate_liveness_tables(&self.ops);
 
         let (mut interference_graph, mut reg_to_node) =
-            register_allocator::create_interference_graph(&self.ops, &live_in, &live_out);
+            register_allocator::create_interference_graph(&self.ops, &live_out);
 
         let buf = register_allocator::coalesce_registers(
             &mut self.ops,
@@ -122,31 +122,29 @@ impl RealizedAbstractInstructionSet {
 
         let mut stack = register_allocator::simplify(&mut interference_graph, 47);
 
-        let allocations: BTreeMap<VirtualRegister, AllocatedRegister> = BTreeMap::new();
-
         let mut pool1 = RegPool::init();
         while let Some((vreg, vregs)) = stack.pop() {
-            let allocated_reg =
-                match vreg {
-                    VirtualRegister::Constant(c) => AllocatedRegister::Constant(c.clone()),
-                    VirtualRegister::Virtual(_) => {
-                        // Goal: find allocated register $r in pool such that
-                        // neighbors(reg) (i.e. vregs) and pool.registers[ .. $r ..].used_by() do not
-                        // intersection. That is, $r is not used by an of reg's neighbors
-                        // I think BTreeSet should have an intersect method.
-                        let next_available = pool1.registers.iter_mut().find(
-                            |RegAllocationStatus { reg, used_by }| {
-                                vregs.intersection(used_by).count() == 0
-                            },
-                        );
-                        if let Some(RegAllocationStatus { reg, used_by }) = next_available {
-                            used_by.insert(vreg.clone());
-                        }
-
-                        // This is wrong of course, I just want the code to compile
-                        AllocatedRegister::Allocated(0)
+            // Something is off here ...
+            match vreg {
+                VirtualRegister::Constant(c) => AllocatedRegister::Constant(c.clone()),
+                VirtualRegister::Virtual(_) => {
+                    // Goal: find allocated register $r in pool such that
+                    // neighbors(reg) (i.e. vregs) and pool.registers[ .. $r ..].used_by() do not
+                    // intersection. That is, $r is not used by an of reg's neighbors
+                    // I think BTreeSet should have an intersect method.
+                    let next_available = pool1.registers.iter_mut().find(
+                        |RegAllocationStatus { reg: _, used_by }| {
+                            vregs.intersection(used_by).count() == 0
+                        },
+                    );
+                    if let Some(RegAllocationStatus { reg: _, used_by }) = next_available {
+                        used_by.insert(vreg.clone());
                     }
-                };
+
+                    // This is wrong of course, I just want the code to compile
+                    AllocatedRegister::Allocated(0)
+                }
+            };
         }
 
         // construct a mapping from every op to the registers it uses
@@ -359,12 +357,9 @@ impl RegPool {
         let allocated_reg = self
             .registers
             .iter_mut()
-            .find(|RegAllocationStatus { reg, used_by }| used_by.contains(virtual_register));
+            .find(|RegAllocationStatus { reg: _, used_by }| used_by.contains(virtual_register));
 
-        match allocated_reg {
-            Some(RegAllocationStatus { reg, used_by }) => Some(reg.clone()),
-            None => None,
-        }
+        allocated_reg.map(|RegAllocationStatus { reg, used_by: _ }| reg.clone())
     }
 }
 
@@ -767,7 +762,6 @@ pub(crate) fn compile_ast_to_asm(
                 warnings,
                 errors
             );
-
             asm_buf.append(&mut body);
             asm_buf.append(&mut check!(
                 ret_or_retd_value(
