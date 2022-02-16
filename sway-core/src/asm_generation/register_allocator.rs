@@ -13,6 +13,8 @@ pub(crate) fn generate_liveness_tables(
         live_out.insert(op.clone(), BTreeSet::new());
     }
 
+    println!("ops: {:#?}", ops);
+
     let len = ops.len();
     let mut modified: bool;
     while {
