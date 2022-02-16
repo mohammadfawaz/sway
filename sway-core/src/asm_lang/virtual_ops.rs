@@ -1061,7 +1061,14 @@ fn update_virtual_immediate_12(
     idx: &VirtualImmediate12,
 ) -> VirtualImmediate12 {
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        VirtualImmediate12 { value: *i as u16 }
+        VirtualImmediate12::new(
+            *i as u64,
+            crate::span::Span {
+                span: pest::Span::new(" ".into(), 0, 0).unwrap(),
+                path: None,
+            },
+        )
+        .unwrap()
     } else {
         // Really an internal compiler error
         idx.clone()
@@ -1073,7 +1080,14 @@ fn update_virtual_immediate_24(
     idx: &VirtualImmediate24,
 ) -> VirtualImmediate24 {
     if let Some(i) = inst_index.get(&(idx.value as usize)) {
-        VirtualImmediate24 { value: *i as u32 }
+        VirtualImmediate24::new(
+            *i as u64,
+            crate::span::Span {
+                span: pest::Span::new(" ".into(), 0, 0).unwrap(),
+                path: None,
+            },
+        )
+        .unwrap()
     } else {
         // Really an internal compiler error
         idx.clone()
