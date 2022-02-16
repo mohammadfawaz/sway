@@ -726,8 +726,8 @@ impl VirtualOp {
             .map(|x| match x {
                 VirtualRegister::Constant(c) => (x, Some(AllocatedRegister::Constant(c.clone()))),
                 VirtualRegister::Virtual(_) => {
-                    (x, pool.get_register(x, &op_register_mapping[ix..]))
-//                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
+//                    (x, pool.get_register(x, &op_register_mapping[ix..]))
+                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
                 }
             })
             .map(|(x, register_opt)| register_opt.map(|register| (x, register)))
