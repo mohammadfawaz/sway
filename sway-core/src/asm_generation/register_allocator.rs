@@ -91,7 +91,7 @@ pub(crate) fn create_interference_graph(
                 let node_idx1 = reg_to_node.get(a).unwrap();
                 for b in regs.iter() {
                     let node_idx2 = reg_to_node.get(b).unwrap();
-                    if *b != *c && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
+                    if *b != *c && *b != *a && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
                         interference_graph.add_edge(*node_idx1, *node_idx2, ());
                     }
                 }
@@ -101,7 +101,7 @@ pub(crate) fn create_interference_graph(
                     let node_idx1 = reg_to_node.get(a).unwrap();
                     for b in regs.iter() {
                         let node_idx2 = reg_to_node.get(b).unwrap();
-                        if !interference_graph.contains_edge(*node_idx1, *node_idx2) {
+                        if *b != **a && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
                             interference_graph.add_edge(*node_idx1, *node_idx2, ());
                         }
                     }
@@ -118,6 +118,10 @@ pub(crate) fn coalesce_registers(
     interference_graph: &mut Graph<VirtualRegister, (), petgraph::Undirected>,
     reg_to_node: &mut HashMap<VirtualRegister, NodeIndex>,
 ) -> Vec<RealizedOp> {
+    let graph = interference_graph.clone();
+    use petgraph::dot::Dot;
+    println!("{:?}", Dot::with_config(&graph, &[]));
+
     let mut buf: Vec<RealizedOp> = vec![];
     let mut old_to_new_reg: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
     let mut full_map: HashMap<VirtualRegister, VirtualRegister> = HashMap::new();
@@ -199,6 +203,11 @@ pub(crate) fn simplify(
     k: usize,
 ) -> Vec<(VirtualRegister, BTreeSet<VirtualRegister>)> {
     let mut stack: Vec<(VirtualRegister, BTreeSet<VirtualRegister>)> = vec![];
+
+
+//    let graph = interference_graph.clone();
+//    use petgraph::dot::Dot;
+//    println!("{:?}", Dot::with_config(&graph, &[]));
 
     while let Some(node) = pick_node(interference_graph, k) {
         let neighbors = interference_graph
