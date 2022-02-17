@@ -362,7 +362,6 @@ pub(crate) fn convert_expression_to_asm(
         // ABI casts are purely compile-time constructs and generate no corresponding bytecode
         TypedExpressionVariant::AbiCast { .. } => ok(vec![], warnings, errors),
         a => {
-            println!("unimplemented: {:?}", a);
             errors.push(CompileError::Unimplemented(
                 "ASM generation has not yet been implemented for this.",
                 exp.span.clone(),
@@ -399,14 +398,12 @@ pub(crate) fn convert_code_block_to_asm(
     for node in &block.contents {
         // If this is a return, then we jump to the end of the function and put the
         // value in the return register
-        println!("node: {:#?}", node); 
         let res = check!(
             convert_node_to_asm(node, namespace, register_sequencer, return_register),
             continue,
             warnings,
             errors
         );
-        println!("res: {:#?}", res); 
         match res {
             NodeAsmResult::JustAsm(ops) => asm_buf.append(&mut ops.into_iter().collect()),
             NodeAsmResult::ReturnStatement { mut asm } => {

@@ -10,7 +10,7 @@ fn sum_test(a:u64, b:u64, c:u64) -> u64 {
 fn reassignment_test(cond: bool) -> u64 {
     let mut b = 2;
     if cond {
-        b = 47;
+        b = 46;
     } else {
         b = 5;
     };
@@ -40,6 +40,6 @@ fn main() -> u64 {
     assert(sum_test(3, 2, 1) == 6);
 
     let res = reassignment_test(true);
-    assert(res == 47);
+    assert(res == 46);
     res
 }

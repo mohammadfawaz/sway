@@ -66,7 +66,6 @@ pub(crate) fn convert_if_exp_to_asm(
         errors
     );
     asm_buf.append(&mut then_branch);
-    println!("then branch: {:#?}", then_branch);
     // move the result of the then branch into the return register
     if !then_branch.is_empty() {
         asm_buf.push(Op::register_move(

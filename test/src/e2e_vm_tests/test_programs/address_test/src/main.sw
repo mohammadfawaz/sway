@@ -42,7 +42,7 @@ fn main() -> bool {
     assert(addrD == addrE); 
 
     assert(!(addr1 == addr3));
-/*    assert(!(addr1 == addr5));
+    assert(!(addr1 == addr5));
     assert(!(addr1 == addr7));
     assert(!(addr1 == addr9));
     assert(!(addr1 == addrB));
@@ -64,7 +64,7 @@ fn main() -> bool {
     assert(!(addr7 == addrD));
 
     assert(!(addr9 == addrB));
-    assert(!(addr9 == addrD));*/
+    assert(!(addr9 == addrD));
 
     true
 }
