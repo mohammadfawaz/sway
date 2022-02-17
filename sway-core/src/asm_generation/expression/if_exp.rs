@@ -67,13 +67,11 @@ pub(crate) fn convert_if_exp_to_asm(
     );
     asm_buf.append(&mut then_branch);
     // move the result of the then branch into the return register
-    if !then_branch.is_empty() {
-        asm_buf.push(Op::register_move(
-            return_register.clone(),
-            then_branch_result,
-            then.clone().span,
-        ));
-    }
+    asm_buf.push(Op::register_move(
+        return_register.clone(),
+        then_branch_result,
+        then.clone().span,
+    ));
     asm_buf.push(Op::jump_to_label_comment(
         after_else_label.clone(),
         "end of then branch",
@@ -93,13 +91,11 @@ pub(crate) fn convert_if_exp_to_asm(
         );
         asm_buf.append(&mut else_branch);
         // move the result of the else branch into the return register
-        if !else_branch.is_empty() {
-            asm_buf.push(Op::register_move(
-                return_register.clone(),
-                else_branch_result,
-                r#else.clone().span,
-            ));
-        }
+        asm_buf.push(Op::register_move(
+            return_register.clone(),
+            else_branch_result,
+            r#else.clone().span,
+        ));
     }
 
     asm_buf.push(Op::unowned_jump_label_comment(
