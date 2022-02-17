@@ -303,8 +303,8 @@ impl VirtualOp {
             GM(_r1, _imm) => vec![],
             Undefined | DataSectionOffsetPlaceholder => vec![],
             DataSectionRegisterLoadPlaceholder => vec![
-            //                &VirtualRegister::Constant(ConstantRegister::DataSectionStart),
-            //                &VirtualRegister::Constant(ConstantRegister::InstructionStart),
+            //               &VirtualRegister::Constant(ConstantRegister::DataSectionStart)
+//                            &VirtualRegister::Constant(ConstantRegister::InstructionStart),
                         ],
         })
         .into_iter()
@@ -399,7 +399,8 @@ impl VirtualOp {
         .collect()
     }
 
-    pub(crate) fn successors(&self, index: usize, ops: &[RealizedOp]) -> Vec<RealizedOp> {
+    pub(crate) fn successors(&self, index: usize, ops: &[RealizedOp],
+        inst_index: &HashMap<usize, usize>,) -> Vec<RealizedOp> {
         use VirtualOp::*;
         let next_op = if index >= ops.len() - 1 {
             vec![]
@@ -407,21 +408,22 @@ impl VirtualOp {
             vec![ops[index + 1].clone()]
         };
         match self {
+            RVRT(r) => vec![],
             JI(i) =>  {
-                if i.value as usize - 1 >= ops.len() - 1 {
+                if *inst_index.get(&(i.value as usize)).unwrap() >= ops.len() {
                     vec![]
                 } else {
-                    vec![ops[i.value as usize - 1].clone()]
+                    vec![ops[*inst_index.get(&(i.value as usize)).unwrap()].clone()]
                 }
             },
             JNEI(_, _, i) => { 
-                if i.value as usize - 1 >= ops.len() - 1 {
+                if *inst_index.get(&(i.value as usize)).unwrap() >= ops.len() {
                      vec![]
                     .into_iter()
                     .chain(next_op.into_iter())
                     .collect()
                 } else {
-                    vec![ops[i.value as usize - 1].clone()]
+                    vec![ops[*inst_index.get(&(i.value as usize)).unwrap()].clone()]
                     .into_iter()
                     .chain(next_op.into_iter())
                     .collect()
@@ -726,8 +728,8 @@ impl VirtualOp {
             .map(|x| match x {
                 VirtualRegister::Constant(c) => (x, Some(AllocatedRegister::Constant(c.clone()))),
                 VirtualRegister::Virtual(_) => {
-//                    (x, pool.get_register(x, &op_register_mapping[ix..]))
-                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
+                    (x, pool.get_register(x, &op_register_mapping[ix..]))
+//                    (x, pool1.get_register(x, &op_register_mapping[ix..]))
                 }
             })
             .map(|(x, register_opt)| register_opt.map(|register| (x, register)))

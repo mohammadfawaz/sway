@@ -1,9 +1,11 @@
 use crate::asm_lang::{virtual_register::*, RealizedOp, VirtualOp};
+use crate::asm_generation::DataSection;
 use petgraph::graph::{Graph, NodeIndex};
 use std::collections::{BTreeSet, HashMap};
 
 pub(crate) fn generate_liveness_tables(
     ops: &[RealizedOp],
+    data_section: &DataSection,
 ) -> HashMap<RealizedOp, BTreeSet<VirtualRegister>> {
     let mut live_in: HashMap<RealizedOp, BTreeSet<VirtualRegister>> = HashMap::new();
     let mut live_out: HashMap<RealizedOp, BTreeSet<VirtualRegister>> = HashMap::new();
@@ -15,51 +17,89 @@ pub(crate) fn generate_liveness_tables(
 
     println!("ops: {:#?}", ops);
 
+    let mut inst_index: HashMap<usize, usize> = HashMap::new();
+    let mut vec_index = 0;
+    let mut actual_index = 0;
+    for i in 0..ops.len() {
+        if let VirtualOp::DataSectionOffsetPlaceholder = &ops[i].opcode {
+            inst_index.insert(actual_index, vec_index);
+            vec_index += 1;
+            actual_index += 2;
+        } else if let VirtualOp::LWDataId(_, ref data_id) = &ops[i].opcode {
+            inst_index.insert(actual_index, vec_index);
+            let type_of_data = data_section.type_of_data(data_id).expect(
+            "Internal miscalculation in data section -- data id did not match up to any actual data",);
+            if type_of_data.stack_size_of() > 1 {
+                vec_index += 1;
+                actual_index += 2;
+            } else {
+                vec_index += 1;
+                actual_index += 1;
+            }
+        } else {
+            inst_index.insert(actual_index, vec_index);
+            vec_index += 1;
+            actual_index += 1;
+        }
+    }
+
+    println!("inst_index: {:#?}", inst_index);
+
     let len = ops.len();
     let mut modified: bool;
     while {
         modified = false;
-        for (index, op) in ops.iter().rev().enumerate() {
+//        for (index, op) in ops.iter().rev().enumerate() {
+        for index in 0..ops.len() {
             let rev_index = len - index - 1;
-            let op_use = op.opcode.use_registers();
-            let op_def = op.opcode.def_registers();
+        
+            let mut op_use_filtered = ops[rev_index].opcode.use_registers();
+            op_use_filtered.retain(|&x| match x {VirtualRegister::Virtual(_) => true, _ => false});
+
+            let mut op_def_filtered = ops[rev_index].opcode.def_registers();
+            op_use_filtered.retain(|&x| match x {VirtualRegister::Virtual(_) => true, _ => false});
+
+            let op_use = ops[rev_index].opcode.use_registers().clone();
+            let op_def = ops[rev_index].opcode.def_registers();
 
             // Compute LIVE_out(op) = LIVE_in(s1) UNION LIVE_in(s2) UNION ... where s1, s2, ... are
             // successors of op
-            let previous_live_out_for_op = live_out.get_mut(op).unwrap().clone();
+            let previous_live_out_for_op = live_out.get_mut(&ops[rev_index]).unwrap().clone();
 
-            for s in &op.opcode.successors(rev_index, ops) {
+            for s in &ops[rev_index].opcode.successors(rev_index, ops, &inst_index) {
                 let live_in_s = live_in.get(s).unwrap().clone();
                 for l in &live_in_s {
-                    live_out.get_mut(op).unwrap().insert(l.clone());
+                    live_out.get_mut(&ops[rev_index]).unwrap().insert(l.clone());
                 }
             }
-            if previous_live_out_for_op != live_out.get_mut(op).unwrap().clone() {
+            if previous_live_out_for_op != live_out.get_mut(&ops[rev_index]).unwrap().clone() {
                 modified = true;
             }
 
             // Compute LIVE_in(op) = use(op) UNION (LIVE_out(op) - def(op))
             // Add use(op)
-            let previous_live_in_for_op = live_in.get_mut(op).unwrap().clone();
-            for u in op_use {
-                live_in.get_mut(op).unwrap().insert(u.clone());
+            let previous_live_in_for_op = live_in.get_mut(&ops[rev_index]).unwrap().clone();
+            for u in op_use_filtered {
+                live_in.get_mut(&ops[rev_index]).unwrap().insert(u.clone());
             }
 
             // Add LIVE_out(op) - def(op)
-            let mut live_out_minus_defs = live_out.get(op).unwrap().clone();
-            for d in &op_def {
+            let mut live_out_minus_defs = live_out.get(&ops[rev_index]).unwrap().clone();
+            for d in &op_def_filtered {
                 live_out_minus_defs.remove(d);
             }
 
             for l in &live_out_minus_defs {
-                live_in.get_mut(op).unwrap().insert(l.clone());
+                live_in.get_mut(&ops[rev_index]).unwrap().insert(l.clone());
             }
-            if previous_live_in_for_op != live_in.get_mut(op).unwrap().clone() {
+            if previous_live_in_for_op != live_in.get_mut(&ops[rev_index]).unwrap().clone() {
                 modified = true;
             }
         }
         modified
     } {}
+    println!("live_in: {:#?}", live_in);
+    println!("live_out: {:#?}", live_out);
     live_out
 }
 
@@ -74,9 +114,12 @@ pub(crate) fn create_interference_graph(
         Graph::<VirtualRegister, (), petgraph::Undirected>::new_undirected();
 
     let all_regs = ops.iter().fold(BTreeSet::new(), |mut tree, elem| {
-        tree.extend(elem.opcode.registers().into_iter());
+        let mut regs = elem.opcode.registers();
+        regs.retain(|&x| match x {VirtualRegister::Virtual(_) => true, _ => false});
+        tree.extend(regs.into_iter());
         tree
     });
+    println!("all_regs: {:#?}" , all_regs);
 
     let mut reg_to_node: HashMap<VirtualRegister, NodeIndex> = HashMap::new();
 
@@ -88,21 +131,26 @@ pub(crate) fn create_interference_graph(
     for (op, regs) in live_out {
         match &op.opcode {
             VirtualOp::MOVE(a, c) => {
-                let node_idx1 = reg_to_node.get(a).unwrap();
-                for b in regs.iter() {
-                    let node_idx2 = reg_to_node.get(b).unwrap();
-                    if *b != *c && *b != *a && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
-                        interference_graph.add_edge(*node_idx1, *node_idx2, ());
+                if let Some(node_idx1) = reg_to_node.get(a) {
+                    for b in regs.iter() {
+                        if let Some(node_idx2) = reg_to_node.get(b) {
+                            if *b != *c && *b != *a && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
+                                interference_graph.add_edge(*node_idx1, *node_idx2, ());
+                            }
+                        }
                     }
                 }
             }
             _ => {
                 for a in &op.opcode.def_registers() {
-                    let node_idx1 = reg_to_node.get(a).unwrap();
-                    for b in regs.iter() {
-                        let node_idx2 = reg_to_node.get(b).unwrap();
-                        if *b != **a && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
-                            interference_graph.add_edge(*node_idx1, *node_idx2, ());
+                    println!("a: {:#?}", a);
+                    if let Some(node_idx1) = reg_to_node.get(a) {
+                        for b in regs.iter() {
+                            if let Some(node_idx2) = reg_to_node.get(b) {
+                                if *b != **a && !interference_graph.contains_edge(*node_idx1, *node_idx2) {
+                                    interference_graph.add_edge(*node_idx1, *node_idx2, ());
+                                }
+                            }
                         }
                     }
                 }
@@ -117,6 +165,7 @@ pub(crate) fn coalesce_registers(
     ops: &mut Vec<RealizedOp>,
     interference_graph: &mut Graph<VirtualRegister, (), petgraph::Undirected>,
     reg_to_node: &mut HashMap<VirtualRegister, NodeIndex>,
+    data_section: &DataSection,
 ) -> Vec<RealizedOp> {
     let graph = interference_graph.clone();
     use petgraph::dot::Dot;
@@ -130,52 +179,64 @@ pub(crate) fn coalesce_registers(
     let mut old_index: usize = 0;
     for i in 0..ops.len() {
         if let VirtualOp::MOVE(r1, r2) = &ops[i].opcode {
-            let idx1 = reg_to_node.get(r1).unwrap();
-            let idx2 = reg_to_node.get(r2).unwrap();
-            if r1 == r2 {
-                inst_index.insert(old_index, new_index);
-                old_index += 1;
-                new_index += 1;
-                continue;
-            }
-            let move_is_needed = interference_graph.contains_edge(*idx1, *idx2);
+            if let Some(idx1) = reg_to_node.get(r1) {
+                if let Some(idx2) = reg_to_node.get(r2) {
+                    if r1 == r2 {
+                        inst_index.insert(old_index, new_index);
+                        old_index += 1;
+                        new_index += 1;
+                        continue;
+                    }
+                    let move_is_needed = interference_graph.contains_edge(*idx1, *idx2);
 
-            if move_is_needed {
-                buf.push(ops[i].clone());
-                inst_index.insert(old_index, new_index);
-                old_index += 1;
-                new_index += 1;
+                    if move_is_needed {
+                        buf.push(ops[i].clone());
+                        inst_index.insert(old_index, new_index);
+                        old_index += 1;
+                        new_index += 1;
+                    } else {
+                        let neighbors = interference_graph.neighbors(*idx1).collect::<Vec<_>>();
+                        for neighbor in neighbors.clone() {
+                            if !interference_graph.contains_edge(neighbor, *idx2) {
+                                interference_graph.add_edge(neighbor, *idx2, ());
+                            }
+                        }
+                        interference_graph.remove_node(*idx1);
+                        // Reconstruct reg_to node:
+                        for node_idx in interference_graph.node_indices() {
+                            reg_to_node.insert(interference_graph[node_idx].clone(), node_idx);
+                        }
+
+                        // This needs to be cleaned up
+                        old_to_new_reg.insert(r1.clone(), r2.clone());
+                        inst_index.insert(old_index, new_index);
+                        old_index += 1;
+                        for reg in old_to_new_reg.keys() {
+                            let mut temp = reg;
+                            while let Some(t) = old_to_new_reg.get(temp) {
+                                temp = t;
+                            }
+                            full_map.insert(reg.clone(), temp.clone());
+                        }
+                        for op in &mut ops.iter_mut() {
+                            op.opcode = op.opcode.update_register(&full_map, &HashMap::new());
+                        }
+
+                        for op in &mut buf {
+                            op.opcode = op.opcode.update_register(&full_map, &HashMap::new());
+                        }
+                    }
+                } else {
+                    inst_index.insert(old_index, new_index);
+                    buf.push(ops[i].clone());
+                    old_index += 1;
+                    new_index += 1;
+                }
             } else {
-                let neighbors = interference_graph.neighbors(*idx1).collect::<Vec<_>>();
-                for neighbor in neighbors.clone() {
-                    if !interference_graph.contains_edge(neighbor, *idx2) {
-                        interference_graph.add_edge(neighbor, *idx2, ());
-                    }
-                }
-                interference_graph.remove_node(*idx1);
-                // Reconstruct reg_to node:
-                for node_idx in interference_graph.node_indices() {
-                    reg_to_node.insert(interference_graph[node_idx].clone(), node_idx);
-                }
-
-                // This needs to be cleaned up
-                old_to_new_reg.insert(r1.clone(), r2.clone());
                 inst_index.insert(old_index, new_index);
+                buf.push(ops[i].clone());
                 old_index += 1;
-                for reg in old_to_new_reg.keys() {
-                    let mut temp = reg;
-                    while let Some(t) = old_to_new_reg.get(temp) {
-                        temp = t;
-                    }
-                    full_map.insert(reg.clone(), temp.clone());
-                }
-                for op in &mut ops.iter_mut() {
-                    op.opcode = op.opcode.update_register(&full_map, &HashMap::new());
-                }
-
-                for op in &mut buf {
-                    op.opcode = op.opcode.update_register(&full_map, &HashMap::new());
-                }
+                new_index += 1;
             }
         } else if let VirtualOp::DataSectionOffsetPlaceholder = &ops[i].opcode {
             old_index += 2;
@@ -183,6 +244,18 @@ pub(crate) fn coalesce_registers(
             inst_index.insert(old_index - 2, new_index - 2);
             inst_index.insert(old_index - 1, new_index - 1);
             buf.push(ops[i].clone());
+        } else if let VirtualOp::LWDataId(_, ref data_id) = &ops[i].opcode {
+            inst_index.insert(old_index, new_index);
+            buf.push(ops[i].clone());
+            let type_of_data = data_section.type_of_data(data_id).expect(
+            "Internal miscalculation in data section -- data id did not match up to any actual data",);
+            if type_of_data.stack_size_of() > 1 {
+                old_index += 2;
+                new_index += 2;
+            } else {
+                old_index += 1;
+                new_index += 1;
+            }
         } else {
             inst_index.insert(old_index, new_index);
             buf.push(ops[i].clone());
@@ -209,13 +282,22 @@ pub(crate) fn simplify(
 //    use petgraph::dot::Dot;
 //    println!("{:?}", Dot::with_config(&graph, &[]));
 
+    let graph1 = interference_graph.clone();
+    use petgraph::dot::Dot;
+    println!("before simplification {:?}", Dot::with_config(&graph1, &[]));
+
+
     while let Some(node) = pick_node(interference_graph, k) {
+        println!("removing: {:#?} with degree {}", node, interference_graph.neighbors(node).count());
         let neighbors = interference_graph
             .neighbors(node)
             .map(|n| interference_graph[n].clone())
             .collect();
         stack.push((interference_graph.remove_node(node).unwrap(), neighbors));
     }
+
+    let graph2 = interference_graph.clone();
+    println!("after simplification {:?}", Dot::with_config(&graph2, &[]));
 
     // Gotta check for k colourability here as well
 
@@ -227,8 +309,11 @@ pub(crate) fn pick_node(
     k: usize,
 ) -> Option<NodeIndex> {
     for n in interference_graph.node_indices() {
-        if interference_graph.neighbors(n).count() < k {
-            return Some(n);
+        if let VirtualRegister::Virtual(_) = interference_graph[n] {
+            println!("Comparing: {} with {}", interference_graph.neighbors(n).count(), k);
+            if interference_graph.neighbors(n).count() < (k) {
+                return Some(n);
+            }
         }
     }
     None

@@ -104,23 +104,31 @@ pub struct RealizedAbstractInstructionSet {
 }
 
 impl RealizedAbstractInstructionSet {
-    fn allocate_registers(mut self) -> InstructionSet {
+    fn allocate_registers(mut self
+, data_section: &DataSection,
+                          ) -> InstructionSet {
         // Eventually, we will use a cool graph-coloring algorithm.
         // For now, just keep a pool of registers and return
         // registers when they are not read anymore
 
-        let live_out = register_allocator::generate_liveness_tables(&self.ops);
+        let old_ops = self.ops.clone();
+        println!("Before liveness");
+        let live_out = register_allocator::generate_liveness_tables(&self.ops, &data_section);
 
         let (mut interference_graph, mut reg_to_node) =
             register_allocator::create_interference_graph(&self.ops, &live_out);
 
-        let buf = register_allocator::coalesce_registers(
+        let mut buf = register_allocator::coalesce_registers(
             &mut self.ops,
             &mut interference_graph,
             &mut reg_to_node,
+            &data_section,
         );
 
-        let mut stack = register_allocator::simplify(&mut interference_graph, 47);
+//        let buf = old_ops.clone();
+
+        let mut stack = register_allocator::simplify
+            (&mut interference_graph, compiler_constants::NUM_ALLOCATABLE_REGISTERS as usize);
 
         let mut pool1 = RegPool::init();
         while let Some((vreg, vregs)) = stack.pop() {
@@ -132,11 +140,15 @@ impl RealizedAbstractInstructionSet {
                     // neighbors(reg) (i.e. vregs) and pool.registers[ .. $r ..].used_by() do not
                     // intersection. That is, $r is not used by an of reg's neighbors
                     // I think BTreeSet should have an intersect method.
+                    println!("vreg: {:#?}", vreg);
+                    println!("vregs: {:#?}", vregs);
                     let next_available = pool1.registers.iter_mut().find(
                         |RegAllocationStatus { reg: _, used_by }| {
+                            println!("used_by: {:#?}", used_by);
                             vregs.intersection(used_by).count() == 0
                         },
                     );
+
                     if let Some(RegAllocationStatus { reg: _, used_by }) = next_available {
                         used_by.insert(vreg.clone());
                     }
@@ -148,7 +160,9 @@ impl RealizedAbstractInstructionSet {
         }
 
         // construct a mapping from every op to the registers it uses
-        let op_register_mapping: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = buf
+        let op_register_mapping: Vec<(RealizedOp, BTreeSet<VirtualRegister>)> = 
+            buf
+//            old_ops.clone()
             .into_iter()
             .map(|op| {
                 (
@@ -284,6 +298,7 @@ impl AbstractInstructionSet {
                 Either::Right(org_op) => match org_op {
                     OrganizationalOp::Jump(ref lab) => {
                         let offset = label_namespace.get(lab).unwrap();
+                        println!("Offset: {}", offset);
                         let imm = VirtualImmediate24::new_unchecked(
                             *offset,
                             "Programs with more than 2^24 labels are unsupported right now",
@@ -919,12 +934,14 @@ pub(crate) fn compile_ast_to_asm(
         TypedParseTree::Library { .. } => (SwayAsmSet::Library, Default::default()),
     };
 
-    if build_config.print_intermediate_asm {
-        println!("{}", asm);
-    }
+//    if build_config.print_intermediate_asm {
+        println!("asm: {}", asm);
+//    }
 
-    let finalized_asm = asm
-        .remove_unnecessary_jumps()
+    let jo = asm.remove_unnecessary_jumps();
+        println!("jo: {}", jo );
+
+    let finalized_asm = jo 
         .allocate_registers()
         .optimize();
 
@@ -981,7 +998,7 @@ impl JumpOptimizedAsmSet {
             } => {
                 let program_section = program_section
                     .realize_labels(&data_section)
-                    .allocate_registers();
+                    .allocate_registers(&data_section);
                 RegisterAllocatedAsmSet::ScriptMain {
                     data_section,
                     program_section,
@@ -993,7 +1010,7 @@ impl JumpOptimizedAsmSet {
             } => {
                 let program_section = program_section
                     .realize_labels(&data_section)
-                    .allocate_registers();
+                    .allocate_registers(&data_section);
                 RegisterAllocatedAsmSet::PredicateMain {
                     data_section,
                     program_section,
@@ -1005,7 +1022,7 @@ impl JumpOptimizedAsmSet {
             } => RegisterAllocatedAsmSet::ContractAbi {
                 program_section: program_section
                     .realize_labels(&data_section)
-                    .allocate_registers(),
+                    .allocate_registers(&data_section),
                 data_section,
             },
         }

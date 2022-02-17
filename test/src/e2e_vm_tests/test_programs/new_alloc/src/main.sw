@@ -32,6 +32,7 @@ fn main() -> u64 {
     let sum = one + two;
     assert(sum == 7);
 
+    assert(true);
     assert(loop_test() == 11);
     assert(reassignment_test(false) == 5);
     assert(sum_test(1, 2, 3) == 6);
