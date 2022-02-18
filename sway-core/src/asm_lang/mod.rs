@@ -37,7 +37,7 @@ pub(crate) struct Op {
     pub(crate) owning_span: Option<Span>,
 }
 
-#[derive(Hash, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(crate) struct RealizedOp {
     pub(crate) opcode: VirtualOp,
     /// A descriptive comment for ASM readability
