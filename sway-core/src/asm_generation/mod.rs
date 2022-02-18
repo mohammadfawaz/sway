@@ -669,7 +669,7 @@ pub(crate) struct AsmNamespace {
 }
 
 /// An address which refers to a value in the data section of the asm.
-#[derive(Hash, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub(crate) struct DataId(pub(crate) u32);
 
 impl fmt::Display for DataId {
@@ -929,12 +929,13 @@ pub(crate) fn compile_ast_to_asm(
     };
 
     if build_config.print_intermediate_asm {
-        println!("asm: {}", asm);
+        println!("{}", asm);
     }
 
-    let jo = asm.remove_unnecessary_jumps();
-
-    let finalized_asm = jo.allocate_registers().optimize();
+    let finalized_asm = asm
+        .remove_unnecessary_jumps()
+        .allocate_registers()
+        .optimize();
 
     if build_config.print_finalized_asm {
         println!("{}", finalized_asm);

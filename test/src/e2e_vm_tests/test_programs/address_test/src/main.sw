@@ -4,7 +4,7 @@ use std::address::Address;
 use std::chain::assert;
 
 fn main() -> bool {
-    let bits = 0x8900c5bec4ca97d4febf9ceb4754a60d782abbf3cd815836c1872116f203f862;
+    let bits = 0x8900c5bec4ca97d4febf9ceb4754a60d782abbf3cd815836c1872116f203f861;
 
     let bits3 = 0x1000000000000000_0000000000000000_0000000000000000_0000000000000000;
     let bits4 = 0x1000000000000000_0000000000000000_00000000000000000_000000000000000;
@@ -39,7 +39,7 @@ fn main() -> bool {
     assert(addr7 == addr8);
     assert(addr9 == addrA);
     assert(addrB == addrC);
-    assert(addrD == addrE); 
+    assert(addrD == addrE);
 
     assert(!(addr1 == addr3));
     assert(!(addr1 == addr5));
